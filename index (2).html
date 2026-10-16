@@ -1,0 +1,717 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>인기 TOP 30 · 영화 드라마 여행 한류</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#fff;--ink:#0f0f0f;--muted:#606060;--line:#e5e5e5;--chip:#f2f2f2;--on:#0f0f0f;--on-ink:#fff;--hover:#f2f2f2;--thumb:#e6e6e6;--red:#cc0000;--side:240px}
+@media(prefers-color-scheme:dark){:root{--bg:#0f0f0f;--ink:#f1f1f1;--muted:#aaa;--line:#303030;--chip:#272727;--on:#f1f1f1;--on-ink:#0f0f0f;--hover:#272727;--thumb:#272727;--red:#ff4e45}}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:400 14px/1.45 "Noto Sans KR",Roboto,system-ui,sans-serif}
+button,input,select{font:inherit;color:inherit}
+a{color:inherit;text-decoration:none}
+button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid #3ea6ff;outline-offset:2px}
+svg{width:24px;height:24px;fill:currentColor;flex:none}
+
+/* 상단바 */
+header{position:fixed;inset:0 0 auto 0;height:56px;z-index:30;background:var(--bg);display:flex;align-items:center;gap:8px;padding:0 16px;justify-content:space-between}
+.hl{display:flex;align-items:center;gap:6px;min-width:0}
+.icon-btn{width:40px;height:40px;border:0;border-radius:50%;background:none;display:grid;place-items:center;cursor:pointer}
+.icon-btn:hover{background:var(--hover)}
+.logo{display:flex;align-items:center;gap:6px;font-weight:700;font-size:18px;letter-spacing:-.02em;cursor:pointer;border:0;background:none;padding:0 4px}
+.logo i{width:28px;height:20px;border-radius:6px;background:var(--red);display:grid;place-items:center}
+.logo i:after{content:"";border-left:7px solid #fff;border-top:4.5px solid transparent;border-bottom:4.5px solid transparent;margin-left:2px}
+form.search{display:flex;flex:0 1 640px;min-width:0}
+form.search input{flex:1;min-width:0;height:40px;border:1px solid var(--line);border-right:0;border-radius:40px 0 0 40px;padding:0 16px;background:var(--bg)}
+form.search button{width:64px;height:40px;border:1px solid var(--line);border-radius:0 40px 40px 0;background:var(--chip);cursor:pointer;display:grid;place-items:center}
+.hr{width:120px;flex:none}
+
+/* 왼쪽 메뉴 */
+nav{position:fixed;top:56px;bottom:0;left:0;width:var(--side);padding:12px;overflow-y:auto;background:var(--bg);z-index:20;transition:transform .2s}
+body.side-off nav{transform:translateX(-100%)}
+nav a{display:flex;align-items:center;gap:20px;height:40px;padding:0 12px;border-radius:10px;cursor:pointer}
+nav a:hover{background:var(--hover)}
+nav a[aria-current=page]{background:var(--hover);font-weight:700}
+nav hr{border:0;border-top:1px solid var(--line);margin:12px 0}
+nav .note{padding:4px 12px;color:var(--muted);font-size:12px}
+
+/* 본문 */
+main{padding:56px 24px 64px calc(var(--side) + 24px);transition:padding .2s}
+body.side-off main{padding-left:24px}
+.chips{position:sticky;top:56px;z-index:10;background:var(--bg);display:flex;gap:12px;align-items:center;padding:12px 0;flex-wrap:wrap}
+.chip{border:0;border-radius:8px;background:var(--chip);padding:0 12px;height:32px;cursor:pointer;font-weight:500;white-space:nowrap}
+.chip[aria-pressed=true]{background:var(--on);color:var(--on-ink)}
+select.chip{appearance:none;padding:0 14px;-webkit-appearance:none}
+.sec{margin:8px 0 28px}
+.sh{display:flex;align-items:baseline;gap:12px;margin:8px 0 12px}
+.sh h2{margin:0;font-size:20px;font-weight:700}
+.sh .more{border:0;background:none;color:var(--muted);cursor:pointer;padding:4px 8px;border-radius:6px}
+.sh .more:hover{background:var(--hover);color:var(--ink)}
+.sh .info{color:var(--muted);font-size:13px}
+.grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:24px 16px}
+.card .thumb{position:relative;display:block;aspect-ratio:16/9;border-radius:12px;overflow:hidden;background:var(--thumb)}
+.card .thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.rank{position:absolute;left:6px;top:6px;min-width:26px;height:22px;padding:0 7px;border-radius:6px;background:rgba(0,0,0,.72);color:#fff;font-weight:700;font-size:13px;display:grid;place-items:center}
+.rank.top{background:var(--red)}
+.dur{position:absolute;right:6px;bottom:6px;background:rgba(0,0,0,.8);color:#fff;font-size:12px;font-weight:500;padding:1px 5px;border-radius:4px}
+.title{margin-top:10px;font-size:15px;font-weight:500;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.ch,.stat{color:var(--muted);font-size:13px}
+.ch{margin-top:2px}
+.badge{margin-left:4px;padding:0 6px;border-radius:4px;background:var(--chip);color:var(--ink);font-size:11px}
+.sk .thumb{background:var(--thumb);animation:pulse 1.2s ease-in-out infinite}
+.sk .l{height:12px;border-radius:6px;background:var(--thumb);margin-top:10px;animation:pulse 1.2s ease-in-out infinite}
+.sk .l.s{width:55%}
+@keyframes pulse{50%{opacity:.5}}
+.msg{padding:28px 0;color:var(--muted)}
+.msg.err{color:#d93025}
+
+
+/* 영상 상세 */
+.watch{max-width:1000px;margin:0 auto;padding-top:12px}
+.player{position:relative;display:block;aspect-ratio:16/9;border-radius:12px;overflow:hidden;background:#000}
+.player iframe,.player img{position:absolute;inset:0;width:100%;height:100%;border:0;object-fit:cover}
+.nopl{position:absolute;left:0;right:0;bottom:0;padding:12px 16px;background:rgba(0,0,0,.72);color:#fff}
+.watch h1{font-size:20px;line-height:1.35;margin:14px 0 4px;font-weight:700}
+.wmeta{color:var(--muted)}
+.acts{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}
+.btn{display:inline-flex;align-items:center;height:36px;padding:0 16px;border:0;border-radius:18px;background:var(--chip);font-weight:500;cursor:pointer}
+.btn:hover{filter:brightness(.95)}
+.btn.pri{background:var(--on);color:var(--on-ink)}
+.box{background:var(--chip);border-radius:12px;padding:12px 16px;margin-top:12px}
+.info-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px;margin:0}
+.info-grid dt{color:var(--muted);font-size:12px}
+.info-grid dd{margin:2px 0 0;font-weight:500}
+.desc{white-space:pre-wrap;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+.desc.open{display:block}
+.tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.tagc{color:var(--muted);font-size:13px}
+
+
+/* AI 분석 */
+.ai h3{font-size:14px;margin:18px 0 6px}
+.ai p{margin:4px 0;overflow-wrap:anywhere}
+.chip2{display:inline-block;padding:2px 10px;border-radius:99px;background:var(--bg);border:1px solid var(--line);font-size:13px}
+.verdict{display:inline-block;padding:1px 8px;border-radius:6px;font-weight:700;font-size:13px;margin-right:6px}
+.verdict.yes{background:#1e8e3e;color:#fff}.verdict.no{background:#d93025;color:#fff}
+.chap,.plain{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.chap li{display:flex;gap:10px;align-items:flex-start}
+.ts{flex:none;border:0;border-radius:6px;background:var(--bg);border:1px solid var(--line);padding:1px 8px;font-weight:500;cursor:pointer;color:#065fd4}
+@media(prefers-color-scheme:dark){.ts{color:#3ea6ff}}
+.note{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin-bottom:8px}
+form.ask{display:flex;gap:8px;margin-top:8px}
+form.ask input{flex:1;min-width:0;height:36px;border:1px solid var(--line);border-radius:18px;padding:0 14px;background:var(--bg)}
+.qa{margin-top:12px}.qa .q{font-weight:700}.qa .a{white-space:pre-wrap;overflow-wrap:anywhere;margin-top:2px}
+
+[hidden]{display:none!important}
+/* 다운로드 진행바 */
+.prog{flex-basis:100%}
+.prog-track{height:8px;border-radius:4px;background:var(--line);overflow:hidden}
+.prog-bar{height:100%;width:0;background-color:var(--red);border-radius:4px;transition:width .4s ease}
+.prog-bar.busy{background-image:linear-gradient(45deg,rgba(255,255,255,.3) 25%,transparent 25% 50%,rgba(255,255,255,.3) 50% 75%,transparent 75%);background-size:24px 24px;animation:stripe .8s linear infinite}
+@keyframes stripe{to{background-position:24px 0}}
+.prog-txt{margin-top:6px;font-size:13px;color:var(--muted)}
+/* 구조분석 */
+.tw{overflow-x:auto;margin:6px 0}
+.tw table{border-collapse:collapse;width:100%;font-size:13px}
+.tw th,.tw td{border:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top;overflow-wrap:anywhere}
+.tw th{background:var(--bg);white-space:nowrap}
+.doc{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:4px 16px 12px;max-height:520px;overflow:auto}
+.doc h3,.doc h4,.doc h5{margin:14px 0 6px}.doc p{margin:4px 0;overflow-wrap:anywhere}.doc ul{margin:4px 0;padding-left:20px}
+.doc pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:12px 0 0;font:13px/1.55 ui-monospace,Menlo,Consolas,monospace}
+.doc code{background:var(--chip);padding:0 4px;border-radius:4px}
+.chatlog{display:grid;gap:8px;max-height:320px;overflow:auto;margin:8px 0}
+.cb{max-width:85%;padding:8px 12px;border-radius:14px;white-space:pre-wrap;overflow-wrap:anywhere}
+.cb.user{justify-self:end;background:var(--on);color:var(--on-ink)}
+.cb.bot{justify-self:start;background:var(--bg);border:1px solid var(--line)}
+.cb.err{color:#d93025}
+@media(max-width:1500px){.grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(max-width:1200px){.grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:900px){main,body.side-off main{padding-left:16px;padding-right:16px}
+  nav{box-shadow:2px 0 12px rgba(0,0,0,.2)}.hr{display:none}.logo span{display:none}}
+@media(max-width:640px){.grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:20px 12px}}
+@media(max-width:420px){.grid{grid-template-columns:1fr}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <div class="hl">
+    <button class="icon-btn" id="menu" aria-label="메뉴 열기/닫기"><svg viewBox="0 0 24 24"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg></button>
+    <button class="logo" id="logo" aria-label="홈으로"><i></i><span>인기 TOP 30</span></button>
+  </div>
+  <form class="search" id="f" role="search">
+    <input type="search" id="q" placeholder="키워드 검색 또는 유튜브 주소 붙여넣기" maxlength="80" aria-label="키워드 검색">
+    <button type="submit" aria-label="검색"><svg viewBox="0 0 24 24"><path d="M20.87 20.17l-5.59-5.59A6.96 6.96 0 0017 10c0-3.87-3.13-7-7-7s-7 3.13-7 7 3.13 7 7 7c1.66 0 3.18-.58 4.38-1.54l5.59 5.59.9-.88zM10 16c-3.31 0-6-2.69-6-6s2.69-6 6-6 6 2.69 6 6-2.69 6-6 6z"/></svg></button>
+  </form>
+  <div class="hr"></div>
+</header>
+
+<nav id="nav" aria-label="카테고리"></nav>
+
+<main>
+  <div class="chips" id="chips">
+    <button class="chip" data-f="short" aria-pressed="true">쇼츠</button>
+    <button class="chip" data-f="long" aria-pressed="false">롱폼</button>
+    <button class="chip" data-f="all" aria-pressed="false">전체</button>
+    <select class="chip" id="period" aria-label="기간">
+      <option value="all">전체 기간</option>
+      <option value="week">최근 7일</option>
+      <option value="month">최근 30일</option>
+      <option value="year">최근 1년</option>
+    </select>
+  </div>
+  <div id="view"></div>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const ICON = {
+  home:"M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z",
+  movie:"M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4h-4z",
+  drama:"M21 3H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h5v2h8v-2h5c1.1 0 1.99-.9 1.99-2L23 5c0-1.1-.9-2-2-2zm0 14H3V5h18v12z",
+  travel:"M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z",
+  hallyu:"M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"
+};
+const icon = k => `<svg viewBox="0 0 24 24"><path d="${ICON[k] || ICON.home}"/></svg>`;
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+const nf = new Intl.NumberFormat("ko-KR", { notation: "compact", maximumFractionDigits: 1 });
+const state = { cats: [], format: "short", period: "all", q: "" };
+const cache = new Map();
+
+const fmtDur = sec => { const h = Math.floor(sec/3600), m = Math.floor(sec%3600/60), s = sec%60;
+  return (h ? h + ":" + String(m).padStart(2,"0") : m) + ":" + String(s).padStart(2,"0"); };
+function ago(dateStr) {
+  const d = Math.floor((Date.now() - new Date(dateStr + "T00:00:00Z")) / 864e5);
+  if (d < 1) return "오늘"; if (d < 7) return d + "일 전"; if (d < 30) return Math.floor(d/7) + "주 전";
+  if (d < 365) return Math.floor(d/30) + "개월 전"; return Math.floor(d/365) + "년 전";
+}
+
+function fetchRank(cat) {
+  const key = [cat, state.q, state.format, state.period].join("|");
+  if (!cache.has(key)) {
+    const p = new URLSearchParams({ category: cat, q: state.q, format: state.format, period: state.period });
+    const pr = fetch("/api/rank?" + p).then(async r => {
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.detail || "조회에 실패했습니다.");
+      return d;
+    });
+    pr.catch(() => cache.delete(key));
+    cache.set(key, pr);
+  }
+  return cache.get(key);
+}
+
+const skeleton = n => Array.from({ length: n }, () =>
+  `<div class="card sk"><div class="thumb"></div><div class="l"></div><div class="l s"></div></div>`).join("");
+
+const card = v => `
+  <article class="card">
+    <a class="thumb" href="#/watch/${esc(v.id)}" aria-label="${esc(v.title)}">
+      <img src="${esc(v.thumb)}" alt="" loading="lazy">
+      <span class="rank ${v.rank <= 3 ? "top" : ""}">${v.rank}</span>
+      <span class="dur">${fmtDur(v.duration)}</span>
+    </a>
+    <a class="title" href="#/watch/${esc(v.id)}">${esc(v.title)}</a>
+    <div class="ch">${esc(v.channel)}</div>
+    <div class="stat" title="${v.views.toLocaleString("ko-KR")}회">조회수 ${nf.format(v.views)}회 · ${ago(v.published)}<span class="badge">${v.is_short ? "쇼츠" : "롱폼"}</span></div>
+  </article>`;
+
+async function fill(cat, grid, limit) {
+  grid.innerHTML = skeleton(limit || 10);
+  try {
+    const d = await fetchRank(cat);
+    const items = limit ? d.items.slice(0, limit) : d.items;
+    if (!items.length) { grid.outerHTML = `<div class="msg">조건에 맞는 영상이 없어요. 키워드나 기간을 바꿔 보세요.</div>`; return; }
+    grid.innerHTML = items.map(card).join("");
+  } catch (e) {
+    grid.outerHTML = `<div class="msg err">${esc(e.message)}</div>`;
+  }
+}
+
+function section(c, limit) {
+  const el = document.createElement("section");
+  el.className = "sec";
+  const note = state.q ? `<span class="info">‘${esc(state.q)}’ 검색</span>` : "";
+  el.innerHTML = `<div class="sh"><h2>${esc(c.label)}</h2>${note}${limit ? `<button class="more" data-go="${c.key}">더보기</button>` : ""}</div><div class="grid"></div>`;
+  fill(c.key, el.querySelector(".grid"), limit);
+  return el;
+}
+
+function currentView() {
+  const h = location.hash.replace(/^#\/?/, "");
+  if (/^watch\/[A-Za-z0-9_-]{11}$/.test(h)) return h;
+  return state.cats.some(c => c.key === h) ? h : "home";
+}
+
+function render() {
+  const v = currentView(), view = $("#view");
+  document.querySelectorAll("nav a").forEach(x => {
+    if (x.dataset.v === v) x.setAttribute("aria-current", "page"); else x.removeAttribute("aria-current");
+  });
+  view.innerHTML = "";
+  $("#chips").style.display = v.startsWith("watch/") ? "none" : "";
+  if (v.startsWith("watch/")) { renderWatch(v.slice(6)); window.scrollTo(0, 0); return; }
+  if (state.q) view.append(section({ key: state.cats[0].key, label: "검색 결과" }, 0));  // 키워드 검색은 카테고리 무관
+  else if (v === "home") state.cats.forEach(c => view.append(section(c, 5)));
+  else view.append(section(state.cats.find(c => c.key === v), 0));
+  window.scrollTo(0, 0);
+}
+
+
+const fmtDate = iso => new Date(iso).toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric" });
+const num = n => n == null ? "비공개" : n.toLocaleString("ko-KR") + "회";
+
+function watchHTML(d) {
+  const yt = `https://www.youtube.com/${d.is_short ? "shorts/" : "watch?v="}${d.id}`;
+  const player = d.embeddable
+    ? `<div class="player"><iframe src="https://www.youtube-nocookie.com/embed/${d.id}" title="${esc(d.title)}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>`
+    : `<a class="player" href="${yt}" target="_blank" rel="noopener"><img src="${esc(d.thumb)}" alt=""><span class="nopl">이 영상은 외부 재생이 제한돼 있어요. 눌러서 유튜브에서 보기</span></a>`;
+  
+  return `<div class="watch">
+    <button class="btn" data-back>← 목록으로</button>
+    <div style="height:12px"></div>
+    ${player}
+    <h1>${esc(d.title)}</h1>
+    <div class="wmeta">${esc(d.channel)} · 조회수 ${nf.format(d.views)}회 · ${ago(d.published.slice(0, 10))}</div>
+    
+    <!-- 다운로드 컨트롤 영역 추가 -->
+    <div class="box" style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+      <select id="downloadQuality" class="chip" style="height: 36px;">
+        <option value="highest">최고 화질 (MP4)</option>
+        <option value="1080p">1080p 화질</option>
+        <option value="720p">720p 화질</option>
+        <option value="audio">음원만 추출 (MP3)</option>
+      </select>
+      <button class="btn pri" id="startDownloadBtn">영상 다운로드</button>
+      <span id="downloadStatus" class="wmeta" style="font-size: 13px;"></span>
+      <div class="prog" id="dlProg" role="progressbar" aria-label="다운로드 진행률" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden>
+        <div class="prog-track"><div class="prog-bar" id="dlBar"></div></div>
+        <div class="prog-txt" id="dlTxt"></div>
+      </div>
+    </div>
+
+    <div class="acts">
+      <a class="btn pri" href="${yt}" target="_blank" rel="noopener">유튜브에서 보기</a>
+      <a class="btn" href="https://www.youtube.com/channel/${esc(d.channel_id)}" target="_blank" rel="noopener">채널 보기</a>
+    </div>
+    <div class="box"><dl class="info-grid">
+      <div><dt>업로드</dt><dd>${fmtDate(d.published)}</dd></div>
+      <div><dt>길이</dt><dd>${fmtDur(d.duration)}</dd></div>
+      <div><dt>유형</dt><dd>${d.is_short ? "쇼츠" : "롱폼"}</dd></div>
+      <div><dt>조회수</dt><dd>${num(d.views)}</dd></div>
+      <div><dt>좋아요</dt><dd>${num(d.likes)}</dd></div>
+      <div><dt>댓글</dt><dd>${num(d.comments)}</dd></div>
+    </dl></div>
+    <div class="box">
+      <div class="desc" id="desc">${esc(d.description) || "설명이 없어요."}</div>
+      ${d.description.length > 150 ? `<button class="btn" style="margin-top:8px" data-desc>더보기</button>` : ""}
+      ${d.tags.length ? `<div class="tags">${d.tags.map(t => `<span class="tagc">#${esc(t)}</span>`).join("")}</div>` : ""}
+    </div>
+    ${aiBox(d)}
+    ${structBox(d)}
+  </div>`;
+}
+
+async function renderWatch(id) {
+  const view = $("#view");
+  window.qaLog = []; window.lastAI = null; window.st = null;
+  view.innerHTML = `<div class="watch"><div class="player sk"><div class="thumb"></div></div><div class="sk"><div class="l"></div><div class="l s"></div></div></div>`;
+  try {
+    const r = await fetch("/api/video/" + encodeURIComponent(id));
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || "영상 정보를 불러오지 못했어요.");
+    document.title = d.title + " · 인기 TOP 30";
+    window.cur = d; view.innerHTML = watchHTML(d); loadStruct(id);
+  } catch (e) {
+    view.innerHTML = `<div class="watch"><div class="msg err">${esc(e.message)}</div><button class="btn" data-back>← 목록으로</button></div>`;
+  }
+}
+
+/* ---------- 다운로드 (진행바) ---------- */
+const fmtSize = b => b >= 1048576 ? (b / 1048576).toFixed(1) + "MB" : Math.max(1, Math.round(b / 1024)) + "KB";
+const fmtEta = s => s >= 60 ? Math.floor(s / 60) + "분 " + (s % 60) + "초" : s + "초";
+
+async function runDownload(btn) {
+  const id = window.cur.id, quality = $("#downloadQuality").value;
+  const prog = $("#dlProg"), bar = $("#dlBar"), txt = $("#dlTxt"), st = $("#downloadStatus");
+  const alive = () => document.body.contains(bar);
+  const show = (pct, label, busy) => {
+    if (!alive()) return;
+    prog.hidden = false; bar.style.width = pct + "%"; bar.classList.toggle("busy", !!busy);
+    prog.setAttribute("aria-valuenow", Math.round(pct)); txt.textContent = label;
+  };
+  btn.disabled = true; btn.textContent = "진행 중…"; st.textContent = "";
+  show(0, "서버에 요청하는 중…", true);
+  try {
+    const { job } = await postJSON(`/api/video/${id}/download/start?quality=${quality}`);
+    let s, fails = 0;
+    // 1단계: 서버가 유튜브에서 받고 변환하는 동안 진행률을 주기적으로 확인
+    for (;;) {
+      await new Promise(r => setTimeout(r, 800));
+      if (!alive()) return;
+      let r;
+      try { r = await fetch(`/api/download/${job}/status`); s = await r.json(); }
+      catch (e) { if (++fails > 5) throw new Error("서버와 연결이 끊어졌어요."); continue; }
+      if (!r.ok) throw new Error(s.detail || "진행 상태를 확인하지 못했어요.");
+      if (s.status === "error") throw new Error(s.error || "다운로드에 실패했어요.");
+      if (s.status === "done") break;
+      const extra = [s.speed ? fmtSize(s.speed) + "/s" : "", s.eta != null ? fmtEta(s.eta) + " 남음" : ""].filter(Boolean).join(" · ");
+      if (s.stage === "processing") show(s.percent, "(1/2) 변환·합치는 중…", true);
+      else show(s.percent, `(1/2) 서버에서 영상 받는 중 ${Math.round(s.percent)}%${extra ? " · " + extra : ""}`, s.stage === "queued");
+    }
+    // 2단계: 완성된 파일을 내 기기로 받기
+    show(0, "(2/2) 내려받는 중…");
+    const resp = await fetch(`/api/download/${job}/file`);
+    if (!resp.ok) { let m = "파일을 내려받지 못했어요."; try { m = (await resp.json()).detail || m; } catch (e) {} throw new Error(m); }
+    const total = +resp.headers.get("content-length") || s.size || 0;
+    const reader = resp.body.getReader(), chunks = []; let got = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value); got += value.length;
+      if (total) show(Math.min(got / total * 100, 100), `(2/2) 내려받는 중 ${Math.round(got / total * 100)}% · ${fmtSize(got)} / ${fmtSize(total)}`);
+      else show(100, `(2/2) 내려받는 중 ${fmtSize(got)}`, true);
+    }
+    const url = URL.createObjectURL(new Blob(chunks)), a = document.createElement("a");
+    a.href = url; a.download = s.filename || `${window.cur.title}.${quality === "audio" ? "mp3" : "mp4"}`;
+    document.body.append(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    show(100, `완료 · ${fmtSize(got)}`);
+    if (alive()) st.textContent = "다운로드가 완료되었습니다!";
+  } catch (e) {
+    if (alive()) { prog.hidden = true; st.textContent = `오류: ${e.message}`; }
+  } finally {
+    btn.disabled = false; btn.textContent = "영상 다운로드";
+  }
+}
+
+/* ---------- 구조분석 ---------- */
+const T = x => esc(typeof x === "string" ? x : x == null ? "" : typeof x === "object" ? Object.values(x).filter(Boolean).join(" · ") : String(x));
+const structBox = d => `
+  <div class="box ai" id="st-box">
+    <b>구조분석</b><span class="badge" id="st-badge" hidden></span>
+    <p class="wmeta">위의 AI 분석을 읽어 보고, 새 쇼츠로 만들 만한 영상이라고 판단되면 눌러 주세요. 영상의 구조를 분석해서 기획서와 영상 생성 프롬프트를 만들고 DB에 저장해요.${d.duration > 1800 ? " 30분보다 긴 영상은 앞 30분만 분석해요." : ""} 1~2분 걸릴 수 있어요.</p>
+    <button class="btn pri" data-struct style="margin-top:8px">구조분석</button>
+    <div id="st-out"></div>
+  </div>`;
+
+function md(src) {
+  const inl = t => esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`(.+?)`/g, "<code>$1</code>");
+  const L = String(src || "").split("\n"), out = [], isRow = x => /^\|.*\|$/.test(x.trim());
+  let i = 0;
+  while (i < L.length) {
+    const t = L[i].trim();
+    if (!t) { i++; continue; }
+    if (isRow(t)) {
+      const rows = []; while (i < L.length && isRow(L[i])) rows.push(L[i++].trim());
+      const body = rows.filter(r => !/^\|[\s:|-]+\|$/.test(r));
+      const cells = r => r.slice(1, -1).split("|").map(c => c.trim());
+      out.push(`<div class="tw"><table>${body.map((r, k) => `<tr>${cells(r).map(c => k ? `<td>${inl(c)}</td>` : `<th>${inl(c)}</th>`).join("")}</tr>`).join("")}</table></div>`);
+      continue;
+    }
+    const h = t.match(/^(#{1,4})\s+(.*)$/);
+    if (h) { out.push(`<h${Math.min(h[1].length + 2, 5)}>${inl(h[2])}</h${Math.min(h[1].length + 2, 5)}>`); i++; continue; }
+    if (/^([-*]|\d+\.)\s+/.test(t)) {
+      const li = []; while (i < L.length && /^([-*]|\d+\.)\s+/.test(L[i].trim())) li.push(L[i++].trim().replace(/^([-*]|\d+\.)\s+/, ""));
+      out.push(`<ul>${li.map(x => `<li>${inl(x)}</li>`).join("")}</ul>`); continue;
+    }
+    out.push(`<p>${inl(t)}</p>`); i++;
+  }
+  return out.join("");
+}
+
+function structHTML(r) {
+  const s = r.structure || {}, h = s.hook || {}, pc = s.pacing || {}, sd = s.sound || {}, en = s.ending || {}, P = [];
+  if (s.overview) P.push(`<h3>개요</h3><p>${T(s.overview)}</p>`);
+  if (h.description || h.technique) P.push(`<h3>훅 (${T(h.seconds)})</h3><p><b>${T(h.technique)}</b></p><p>${T(h.description)}</p>`);
+  if ((s.timeline || []).length) P.push(`<h3>구간별 구성</h3><div class="tw"><table><tr><th>시간</th><th>역할</th><th>화면</th><th>소리</th><th>자막</th><th>의도</th></tr>${
+    s.timeline.map(x => `<tr><td>${T(x.start)}~${T(x.end)}</td><td>${T(x.role)}</td><td>${T(x.visual)}</td><td>${T(x.audio)}</td><td>${T(x.text_overlay)}</td><td>${T(x.purpose)}</td></tr>`).join("")}</table></div>`);
+  if (pc.rhythm) P.push(`<h3>컷 리듬</h3><p>${T(pc.rhythm)}${pc.avg_cut_sec ? ` (평균 ${T(pc.avg_cut_sec)}초/컷)` : ""}</p>`);
+  if ((s.editing_style || []).length) P.push(`<h3>편집 기법</h3>${chips(s.editing_style.map(x => typeof x === "string" ? x : JSON.stringify(x)))}`);
+  const snd = [sd.music && "음악: " + T(sd.music), sd.sfx && "효과음: " + T(sd.sfx), sd.narration && "내레이션: " + T(sd.narration)].filter(Boolean);
+  if (snd.length) P.push(`<h3>사운드</h3>${snd.map(x => `<p>${x}</p>`).join("")}`);
+  if (s.caption_style) P.push(`<h3>자막 스타일</h3><p>${T(s.caption_style)}</p>`);
+  if (en.description) P.push(`<h3>엔딩 (${T(en.type)})</h3><p>${T(en.description)}</p>`);
+  if ((s.success_factors || []).length) P.push(`<h3>성공 요인</h3><ul class="plain">${s.success_factors.map(x => `<li>· ${T(x)}</li>`).join("")}</ul>`);
+  if (s.reusable_template) P.push(`<h3>재사용 구조 템플릿</h3><p>${T(s.reusable_template)}</p>`);
+  return `
+    <details open style="margin-top:12px"><summary style="cursor:pointer;font-weight:700">구조 분석 결과</summary>${P.join("") || `<p class="wmeta">표시할 구조 정보가 없어요.</p>`}</details>
+    <h3 style="margin-top:20px">기획서 · 영상 생성 프롬프트</h3>
+    <div class="acts" style="margin:6px 0">
+      <button class="chip" data-sttab="plan" aria-pressed="true">기획서</button>
+      <button class="chip" data-sttab="prompt" aria-pressed="false">영상 생성 프롬프트</button>
+    </div>
+    <div class="doc" id="st-doc"></div>
+    <div class="acts">
+      <button class="btn" data-stcopy>복사</button>
+      <button class="btn" data-stsave>파일로 저장</button>
+      <button class="btn pri" data-stfinal>기획서 확정</button>
+      <button class="btn" data-struct-re>다시 분석하기</button>
+    </div>
+    <h3>기획서 수정 요청</h3>
+    <p class="wmeta">읽어 보고 고치고 싶은 점을 말해 주세요. 기획서와 영상 생성 프롬프트에 바로 반영되고 저장돼요.</p>
+    <div class="chatlog" id="st-chat"></div>
+    <form class="ask" id="stf"><input id="stq" maxlength="1000" placeholder="예: 훅을 더 강하게 바꾸고, 전체 길이를 20초로 줄여줘" aria-label="수정 요청"><button class="btn pri" type="submit">수정 요청</button></form>`;
+}
+
+function showDoc() {
+  const r = window.st, el = $("#st-doc"); if (!r || !el) return;
+  el.innerHTML = window.stTab === "prompt" ? `<pre>${esc(r.generation_prompt)}</pre>` : md(r.planning_doc);
+  document.querySelectorAll("[data-sttab]").forEach(b => b.setAttribute("aria-pressed", b.dataset.sttab === (window.stTab || "plan")));
+}
+function showStatus() {
+  const r = window.st; if (!r) return;
+  const bd = $("#st-badge"), fin = r.status === "final";
+  bd.hidden = false; bd.textContent = (fin ? "확정됨" : "작성 중") + " · v" + r.version;
+  const b = document.querySelector("[data-stfinal]"); if (b) b.textContent = fin ? "확정 해제" : "기획서 확정";
+}
+function showChat() {
+  const el = $("#st-chat"); if (!el) return;
+  el.innerHTML = ((window.st && window.st.chat_log) || []).map(m => `<div class="cb ${m.role === "user" ? "user" : "bot"}">${esc(m.text)}</div>`).join("");
+  el.scrollTop = el.scrollHeight;
+}
+function renderStruct() {
+  window.stTab = "plan";
+  $("#st-out").innerHTML = structHTML(window.st);
+  const b = document.querySelector("[data-struct]"); if (b) b.hidden = true;
+  showDoc(); showStatus(); showChat();
+}
+
+async function loadStruct(id) {
+  try {
+    const r = await fetch(`/api/video/${id}/structure`);
+    if (!r.ok) return;
+    const d = await r.json();
+    if (window.cur && window.cur.id === id && !window.st) { window.st = d; renderStruct(); }
+  } catch (e) { /* 저장된 구조분석이 없거나 DB 미설정이면 버튼만 보여준다 */ }
+}
+
+async function runStruct(btn, force) {
+  if (force && !confirm("다시 분석하면 지금까지 수정한 기획서와 대화 기록이 새 분석 결과로 바뀌어요. 계속할까요?")) return;
+  const id = window.cur.id, out = $("#st-out"), old = btn.textContent;
+  btn.disabled = true; btn.textContent = "분석 중… (최대 2분)";
+  if (!force) out.innerHTML = `<div class="sk" style="margin-top:12px"><div class="l"></div><div class="l s"></div><div class="l"></div></div>`;
+  try {
+    const r = await postJSON(`/api/video/${id}/structure${force ? "?force=true" : ""}`);
+    if (window.cur && window.cur.id === id) { window.st = r; renderStruct(); }
+  } catch (e) {
+    if (!force) out.innerHTML = "";
+    out.insertAdjacentHTML("afterbegin", `<div class="msg err">${esc(e.message)}</div>`);
+    btn.disabled = false; btn.textContent = old;
+  }
+}
+
+async function runRevise() {
+  const inp = $("#stq"), t = inp.value.trim(), log = $("#st-chat");
+  if (!t || window.stBusy || !window.st) return;
+  window.stBusy = true; inp.value = "";
+  const id = window.cur.id;
+  log.insertAdjacentHTML("beforeend", `<div class="cb user">${esc(t)}</div><div class="cb bot wmeta" id="st-wait">기획서를 고치는 중…</div>`);
+  log.scrollTop = log.scrollHeight;
+  try {
+    const d = await postJSON(`/api/video/${id}/structure/revise`, { instruction: t });
+    if (window.cur && window.cur.id === id) { window.st = d; showDoc(); showStatus(); showChat(); }
+  } catch (e) {
+    const w = $("#st-wait"); if (w) { w.className = "cb bot err"; w.textContent = e.message; }
+  }
+  window.stBusy = false;
+}
+
+async function toggleFinal() {
+  const b = document.querySelector("[data-stfinal]"); if (!b || !window.st) return;
+  b.disabled = true;
+  try { window.st = { ...window.st, ...(await postJSON(`/api/video/${window.cur.id}/structure/finalize`, { final: window.st.status !== "final" })) }; showStatus(); }
+  catch (e) { alert(e.message); }
+  b.disabled = false;
+}
+
+function dlText(name, text, type) {
+  const url = URL.createObjectURL(new Blob([text], { type })), el = document.createElement("a");
+  el.href = url; el.download = name; document.body.append(el); el.click(); el.remove(); URL.revokeObjectURL(url);
+}
+
+const toSec = t => String(t || "").split(":").map(Number).reduce((a, x) => a * 60 + (x || 0), 0);
+const chips = arr => arr && arr.length ? `<div class="tags">${arr.map(x => `<span class="chip2">${esc(x)}</span>`).join("")}</div>` : "";
+
+const aiBox = d => `
+  <div class="box ai">
+    <b>AI 영상 분석</b>
+    <p class="wmeta">Gemini가 영상을 보고 요약, 구간 목차, 한국어 번역, 장소와 음식을 정리해요.${d.duration > 1800 ? " 30분보다 긴 영상은 앞 30분만 분석해요." : ""} 1~2분 걸릴 수 있어요.</p>
+    <button class="btn pri" data-ai style="margin-top:8px">AI로 분석하기</button>
+    <div id="ai-out"></div>
+  </div>
+  <div class="box ai">
+    <b>영상에 대해 질문하기</b>
+    <form class="ask" id="askf"><input id="askq" maxlength="300" placeholder="예: 여기서 추천한 맛집이 어디야?" aria-label="질문"><button class="btn pri" type="submit">질문하기</button></form>
+    <div id="qa-out"></div>
+  </div>`;
+
+function aiHTML(a) {
+  const r = a.result || {}, parts = [];
+  if (a.truncated) parts.push(`<div class="note">영상이 길어서 앞 ${Math.floor(a.analyzed_sec / 60)}분만 분석했어요.</div>`);
+  if (r.title_ko || r.description_ko) parts.push(`<h3>한국어 번역</h3><p><b>${esc(r.title_ko || "")}</b></p><p>${esc(r.description_ko || "")}</p>`);
+  if (r.summary) parts.push(`<h3>요약</h3><p>${esc(r.summary)}</p>`);
+  const meta = [r.video_type, r.language, r.related_work].filter(Boolean);
+  if (meta.length) parts.push(`<h3>분류</h3>${chips(meta)}`);
+  const fk = r.foreigner_in_korea;
+  if (fk && fk.match != null) parts.push(`<h3>외국인의 한국 방문 영상인가요?</h3><p><span class="verdict ${fk.match ? "yes" : "no"}">${fk.match ? "맞아요" : "아니에요"}</span>${esc(fk.reason || "")}</p>`);
+  if ((r.chapters || []).length) parts.push(`<h3>구간별 목차</h3><ol class="chap">${r.chapters.map(c =>
+    `<li><button class="ts" data-t="${toSec(c.time)}">${esc(c.time)}</button><span><b>${esc(c.title)}</b> ${esc(c.desc || "")}</span></li>`).join("")}</ol>`);
+  if ((r.places || []).length) parts.push(`<h3>장소</h3><ul class="plain">${r.places.map(p => `<li><b>${esc(p.name)}</b> ${esc(p.note || "")}</li>`).join("")}</ul>`);
+  if ((r.foods || []).length) parts.push(`<h3>음식</h3>${chips(r.foods)}`);
+  if ((r.keywords || []).length) parts.push(`<h3>키워드</h3>${chips(r.keywords)}`);
+  return parts.join("") || `<p class="wmeta">분석 결과가 비어 있어요. 다시 시도해 주세요.</p>`;
+}
+
+const YT_RE = /(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/|live\/|v\/))([A-Za-z0-9_-]{11})/;
+const ytId = s => (s.match(YT_RE) || [])[1] || null;
+
+function saveMd() {
+  const d = window.cur, a = window.lastAI;
+  if (!d || !a) return;
+  const r = a.result || {}, L = [];
+  const yt = `https://www.youtube.com/watch?v=${d.id}`;
+  L.push(`# ${r.title_ko || d.title}`, "",
+    `- 원제: ${d.title}`, `- 채널: ${d.channel}`, `- 링크: ${yt}`,
+    `- 업로드: ${fmtDate(d.published)} · 조회수 ${num(d.views)}`);
+  if (a.truncated) L.push(`- 참고: 영상이 길어서 앞 ${Math.floor(a.analyzed_sec / 60)}분만 분석했어요`);
+  const meta = [r.video_type, r.language, r.related_work].filter(Boolean);
+  if (meta.length) L.push(`- 분류: ${meta.join(" / ")}`);
+  if (r.summary) L.push("", "## 요약", r.summary);
+  if (r.description_ko) L.push("", "## 설명 번역", r.description_ko);
+  const fk = r.foreigner_in_korea;
+  if (fk && fk.match != null) L.push("", "## 외국인의 한국 방문 영상?", `${fk.match ? "맞아요" : "아니에요"} - ${fk.reason || ""}`);
+  if ((r.chapters || []).length) L.push("", "## 구간별 목차",
+    ...r.chapters.map(c => `- [${c.time}](${yt}&t=${toSec(c.time)}s) **${c.title}** ${c.desc || ""}`));
+  if ((r.places || []).length) L.push("", "## 장소", ...r.places.map(x => `- **${x.name}** ${x.note || ""}`));
+  if ((r.foods || []).length) L.push("", "## 음식", r.foods.join(", "));
+  if ((r.keywords || []).length) L.push("", "## 키워드", r.keywords.map(k => "#" + k).join(" "));
+  if ((window.qaLog || []).length) L.push("", "## 질문과 답변", ...window.qaLog.flatMap(x => [`**Q. ${x.q}**`, x.a, ""]));
+  const blob = new Blob([L.join("\n")], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob), el = document.createElement("a");
+  el.href = url;
+  el.download = (r.title_ko || d.title).replace(/[\\/:*?"<>|]+/g, " ").trim().slice(0, 60) + ".md";
+  document.body.append(el); el.click(); el.remove(); URL.revokeObjectURL(url);
+}
+
+async function postJSON(url, body) {
+  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.detail || (Array.isArray(d.detail) ? "요청이 올바르지 않아요." : "요청에 실패했어요."));
+  return d;
+}
+
+async function runAnalyze(btn) {
+  const out = $("#ai-out");
+  btn.disabled = true; btn.textContent = "분석 중… (최대 2분)";
+  out.innerHTML = `<div class="sk" style="margin-top:12px"><div class="l"></div><div class="l s"></div><div class="l"></div></div>`;
+  try {
+    const a = await postJSON(`/api/video/${window.cur.id}/analyze`);
+    window.lastAI = a;
+    out.innerHTML = aiHTML(a) + `<button class="btn" data-save style="margin-top:16px">분석 결과 저장 (.md)</button>` +
+      (window.st ? "" : `<div class="note" style="margin-top:16px"><b>이 영상으로 새 쇼츠를 만들어 볼까요?</b>
+        <p class="wmeta">분석 내용을 읽어 보고 괜찮다고 생각되면, 이 영상의 구조로 기획서를 작성해요.</p>
+        <button class="btn pri" data-struct-go>기획서 작성하기 (구조분석)</button></div>`);
+    btn.textContent = "다시 분석하기";
+  } catch (e) {
+    out.innerHTML = `<div class="msg err">${esc(e.message)}</div>`;
+    btn.textContent = "AI로 분석하기";
+  }
+  btn.disabled = false;
+}
+
+async function runAsk() {
+  const inp = $("#askq"), q = inp.value.trim(); if (!q) return;
+  const out = $("#qa-out"), el = document.createElement("div");
+  el.className = "qa";
+  el.innerHTML = `<div class="q">Q. ${esc(q)}</div><div class="a wmeta">영상을 보는 중…</div>`;
+  out.prepend(el); inp.value = "";
+  try {
+    const d = await postJSON(`/api/video/${window.cur.id}/ask`, { question: q });
+    const a = el.querySelector(".a"); a.classList.remove("wmeta"); a.textContent = d.answer;
+    (window.qaLog = window.qaLog || []).push({ q, a: d.answer });
+  } catch (e) {
+    const a = el.querySelector(".a"); a.className = "a msg err"; a.textContent = e.message;
+  }
+}
+
+async function init() {
+  state.cats = await (await fetch("/api/categories")).json();
+  $("#nav").innerHTML =
+    `<a data-v="home" href="#/">${icon("home")}홈</a><hr>` +
+    state.cats.map(c => `<a data-v="${c.key}" href="#/${c.key}">${icon(c.key)}${esc(c.label)}</a>`).join("") +
+    `<hr><div class="note">카테고리별 조회수 TOP 30</div>`;
+  if (innerWidth < 1000) document.body.classList.add("side-off");
+  window.addEventListener("hashchange", render);
+  $("#menu").onclick = () => document.body.classList.toggle("side-off");
+  const clearSearch = () => { if (state.q) { state.q = ""; $("#q").value = ""; setTimeout(render, 0); } };
+  $("#logo").onclick = () => { clearSearch(); location.hash = "#/"; };
+  $("#nav").addEventListener("click", e => { if (e.target.closest("a")) clearSearch(); if (innerWidth < 900 && e.target.closest("a")) document.body.classList.add("side-off"); });
+  $("#view").addEventListener("click", e => {
+    const g = e.target.closest("[data-go]"); if (g) { location.hash = "#/" + g.dataset.go; return; }
+    if (e.target.closest("[data-back]")) { history.length > 1 ? history.back() : (location.hash = "#/"); return; }
+    const ai = e.target.closest("[data-ai]"); if (ai) { runAnalyze(ai); return; }
+    if (e.target.closest("[data-save]")) { saveMd(); return; }
+    const sg = e.target.closest("[data-struct-go]");
+    if (sg) {
+      sg.disabled = true;
+      const b = document.querySelector("[data-struct]");
+      $("#st-box").scrollIntoView({ behavior: "smooth", block: "start" });
+      if (b && !b.disabled && !b.hidden) runStruct(b, false);
+      return;
+    }
+    const sb = e.target.closest("[data-struct]"); if (sb) { runStruct(sb, false); return; }
+    const sr = e.target.closest("[data-struct-re]"); if (sr) { runStruct(sr, true); return; }
+    const tab = e.target.closest("[data-sttab]"); if (tab) { window.stTab = tab.dataset.sttab; showDoc(); return; }
+    if (e.target.closest("[data-stfinal]")) { toggleFinal(); return; }
+    if (e.target.closest("[data-stcopy]") && window.st) {
+      const btn = e.target.closest("[data-stcopy]");
+      navigator.clipboard.writeText(window.stTab === "prompt" ? window.st.generation_prompt : window.st.planning_doc)
+        .then(() => { btn.textContent = "복사됨!"; setTimeout(() => btn.textContent = "복사", 1500); }, () => alert("복사에 실패했어요."));
+      return;
+    }
+    if (e.target.closest("[data-stsave]") && window.st) {
+      const base = window.cur.title.replace(/[\\/:*?"<>|]+/g, " ").trim().slice(0, 50);
+      if (window.stTab === "prompt") dlText(base + "-영상생성프롬프트.txt", window.st.generation_prompt, "text/plain;charset=utf-8");
+      else dlText(base + "-기획서.md", window.st.planning_doc, "text/markdown;charset=utf-8");
+      return;
+    }
+    const ts = e.target.closest("[data-t]");
+    if (ts && window.cur) {
+      const f = document.querySelector(".player iframe");
+      if (f) { f.src = `https://www.youtube-nocookie.com/embed/${window.cur.id}?start=${ts.dataset.t}&autoplay=1`; f.scrollIntoView({ behavior: "smooth", block: "center" }); }
+      else window.open(`https://www.youtube.com/watch?v=${window.cur.id}&t=${ts.dataset.t}s`, "_blank", "noopener");
+      return;
+    }
+    const t = e.target.closest("[data-desc]");
+    if (t) { const o = $("#desc").classList.toggle("open"); t.textContent = o ? "간략히" : "더보기"; }
+  });
+  $("#view").addEventListener("submit", e => { if (e.target.id === "askf") { e.preventDefault(); runAsk(); } if (e.target.id === "stf") { e.preventDefault(); runRevise(); } });
+  $("#chips").addEventListener("click", e => {
+    const b = e.target.closest("button[data-f]"); if (!b) return;
+    document.querySelectorAll("[data-f]").forEach(x => x.setAttribute("aria-pressed", x === b));
+    state.format = b.dataset.f; render();
+  });
+  $("#period").onchange = e => { state.period = e.target.value; render(); };
+  $("#f").onsubmit = e => {
+    e.preventDefault();
+    const v = $("#q").value.trim(), id = ytId(v);
+    if (id) { $("#q").value = ""; location.hash = "#/watch/" + id; return; }
+    state.q = v;
+    if (currentView().startsWith("watch/")) location.hash = "#/"; else render();
+  };
+  // 다운로드 버튼 (진행바 포함)
+  $("#view").addEventListener("click", e => {
+    const b = e.target.closest("#startDownloadBtn");
+    if (b && window.cur) runDownload(b);
+  });
+  render();
+}
+init();
+</script>
+</body>
+</html>
