@@ -8,6 +8,7 @@ import tempfile
 import threading
 import urllib.parse
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
@@ -60,7 +61,13 @@ CATEGORIES = {
 DURATIONS = {"all": ["any"], "short": ["short"], "long": ["medium", "long"]}
 PERIODS = {"all": None, "week": 7, "month": 30, "year": 365}
 
-app = FastAPI(title="YouTube TOP 30")
+@asynccontextmanager
+async def lifespan(_app):
+    _start_batch_scheduler()  # 연예인 뉴스 배치를 서버와 함께 시작(아래 '연예인 뉴스 배치 스케줄러' 참고)
+    yield
+
+
+app = FastAPI(title="YouTube TOP 30", lifespan=lifespan)
 _cache: dict = {}
 
 
@@ -368,6 +375,11 @@ try:
     from psycopg2.extras import Json, RealDictCursor
 except ImportError:  # requirements.txt에 psycopg2-binary 추가 필요
     psycopg2 = None
+try:
+    import batch_plans  # 연예인 뉴스 배치(같은 폴더의 batch_plans.py)
+except Exception as _e:  # 파일이 없거나 불러오지 못해도 웹 서버는 계속 뜬다
+    batch_plans = None
+    print(f"[배치] batch_plans.py를 불러오지 못했어요: {type(_e).__name__}: {_e}", flush=True)
 
 _db_ready = False
 _DB_SCHEMA = """
@@ -868,6 +880,57 @@ def delete_star(star_id: int = PathParam(..., ge=1, le=2147483647)):
     if not deleted:
         raise HTTPException(404, "등록된 스타를 찾을 수 없어요. 이미 삭제됐을 수 있어요.")
     return {"deleted": True}
+
+
+# ---------------- 연예인 뉴스 배치 스케줄러 ----------------
+# 웹 서버와 같은 프로세스에서 BATCH_INTERVAL_MINUTES(기본 60분)마다 batch_plans.run_once()를 실행한다.
+# 서버가 켜지고 BATCH_START_DELAY_SECONDS(기본 60초) 뒤에 첫 실행을 한다.
+# 서버가 여러 대/워커여도 batch_plans가 DB 잠금을 걸어서 한 번에 한 곳에서만 돈다.
+# BATCH_ENABLED=0 으로 끌 수 있다. NAVER_CLIENT_ID/SECRET, GEMINI_API_KEY가 없으면 켜지지 않는다.
+def _env_int(name: str, default: int, minimum: int) -> int:
+    try:
+        return max(minimum, int(os.environ.get(name, default)))
+    except ValueError:
+        return default
+
+
+BATCH_ENABLED = os.environ.get("BATCH_ENABLED", "1") != "0"
+BATCH_INTERVAL_MINUTES = _env_int("BATCH_INTERVAL_MINUTES", 60, 5)
+BATCH_START_DELAY_SECONDS = _env_int("BATCH_START_DELAY_SECONDS", 60, 0)
+_batch_started = False
+
+
+def _blog(msg: str):
+    print(f"[배치] {msg}", flush=True)  # Railway 로그에서 '[배치]'로 찾을 수 있다
+
+
+def _batch_loop():
+    time.sleep(BATCH_START_DELAY_SECONDS)
+    while True:
+        try:
+            batch_plans.run_once(connect=db_conn, log=_blog)
+        except Exception as e:  # 한 번 실패해도 다음 주기에 다시 시도한다
+            _blog(f"실행 중 오류: {type(e).__name__}: {e}")
+        time.sleep(BATCH_INTERVAL_MINUTES * 60)
+
+
+def _start_batch_scheduler():
+    global _batch_started
+    if _batch_started:
+        return
+    if not BATCH_ENABLED:
+        _blog("BATCH_ENABLED=0 이라 배치를 켜지 않았어요.")
+        return
+    if batch_plans is None or psycopg2 is None:
+        _blog("batch_plans.py 또는 psycopg2-binary가 없어 배치를 켜지 않았어요.")
+        return
+    missing = batch_plans.missing_settings()
+    if missing:
+        _blog("환경변수가 없어 배치를 켜지 않았어요: " + ", ".join(missing))
+        return
+    _batch_started = True
+    threading.Thread(target=_batch_loop, name="news-batch", daemon=True).start()
+    _blog(f"배치를 켰어요. 서버 시작 {BATCH_START_DELAY_SECONDS}초 뒤 첫 실행, 이후 {BATCH_INTERVAL_MINUTES}분마다 실행해요.")
 
 
 def build_ydl_opts(tmp_dir: str, quality: str) -> dict:
