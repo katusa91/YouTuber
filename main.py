@@ -1,6 +1,7 @@
 import base64
 import gzip
 import hmac
+import html as _html
 import io
 import json
 import os
@@ -23,7 +24,7 @@ import plan_templates  # 카테고리 템플릿 → 프롬프트 문단 (batch_p
 from plan_format import plan_doc_format, dialogue_rule  # 기획서 본문 공통 형식 (batch_plans.py도 같이 사용)
 from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi import Path as PathParam
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 import yt_dlp
@@ -547,6 +548,11 @@ CREATE INDEX IF NOT EXISTS shorts_plans_created_idx ON shorts_plans (created_at 
 ALTER TABLE shorts_plans ADD COLUMN IF NOT EXISTS scenes JSONB NOT NULL DEFAULT '[]'::jsonb;
 ALTER TABLE shorts_plans ADD COLUMN IF NOT EXISTS category TEXT NOT NULL DEFAULT 'celeb';
 ALTER TABLE shorts_plans ADD COLUMN IF NOT EXISTS exported_at TIMESTAMPTZ;  -- 편집기에서 영상 내보내기가 끝난 시각(이게 있어야 '생성 완료')
+ALTER TABLE shorts_plans ADD COLUMN IF NOT EXISTS youtube_id TEXT;                -- 유튜브에 올린 영상 ID
+ALTER TABLE shorts_plans ADD COLUMN IF NOT EXISTS youtube_status TEXT;            -- uploading | done | failed
+ALTER TABLE shorts_plans ADD COLUMN IF NOT EXISTS youtube_error TEXT;
+ALTER TABLE shorts_plans ADD COLUMN IF NOT EXISTS youtube_privacy TEXT;
+ALTER TABLE shorts_plans ADD COLUMN IF NOT EXISTS youtube_at TIMESTAMPTZ;         -- 업로드를 시작한 시각
 """
 
 # 카테고리별 쇼츠 템플릿(화면구성, 자막 위치/크기, 후킹 대사, 시나리오 멘트). 기획서 작성/장면 생성 때 참조한다.
@@ -2504,6 +2510,406 @@ def add_plan_voice(plan_id: int = PathParam(..., ge=1, le=2147483647), body: Opt
         raise HTTPException(409, "생성이 끝난 장면이 있어야 음성을 추가할 수 있어요.")
     _make_voices(plan_id, scenes, GEN_DIR / str(plan_id), int(time.time()), body.tts_provider, body.tts_voice, body.overwrite)
     return _gen_load(plan_id)
+
+
+# ---------------- 유튜브 자동 업로드 ----------------
+# 흐름: 편집기에서 '영상 내보내기' 완료 → 브라우저가 내보낸 영상 파일을 이 서버로 보냄(POST /api/plans/{id}/youtube)
+#       → 서버가 임시 파일로 저장하고 곧바로 응답 → 백그라운드에서 YouTube Data API(resumable upload)로 내 채널에 올림
+#       → 결과(youtube_id / youtube_status)를 기획서 행에 저장, 화면은 GET /api/plans/{id} 를 보고 상태를 그린다.
+# 필요한 환경변수(Railway Variables):
+#   YT_CLIENT_ID, YT_CLIENT_SECRET : Google Cloud OAuth 클라이언트(웹 애플리케이션)
+#   YT_REFRESH_TOKEN               : 채널 연결 후 /api/youtube/auth 로 한 번 받아서 넣는다
+#   YT_DEFAULT_PRIVACY             : private(기본) | unlisted | public
+#   YT_DAILY_LIMIT                 : 하루 업로드 상한(기본 5. 업로드 1건이 API 할당량 1,600 소모, 기본 일일 한도 10,000)
+#   YT_CATEGORY_ID                 : 영상 카테고리(기본 24 = 엔터테인먼트)
+#   YT_MAX_MB                      : 받을 수 있는 영상 크기 상한(기본 250MB)
+#   PUBLIC_BASE_URL                : (선택) OAuth 리디렉션에 쓸 주소. 예) https://내앱.up.railway.app
+YT_CLIENT_ID = os.environ.get("YT_CLIENT_ID", "").strip()
+YT_CLIENT_SECRET = os.environ.get("YT_CLIENT_SECRET", "").strip()
+YT_REFRESH_TOKEN = os.environ.get("YT_REFRESH_TOKEN", "").strip()
+YT_PRIVACIES = ("private", "unlisted", "public")
+YT_DEFAULT_PRIVACY = os.environ.get("YT_DEFAULT_PRIVACY", "private").strip().lower()
+if YT_DEFAULT_PRIVACY not in YT_PRIVACIES:
+    YT_DEFAULT_PRIVACY = "private"
+YT_CATEGORY_ID = os.environ.get("YT_CATEGORY_ID", "24").strip() or "24"
+def _yt_int(name: str, default: int, minimum: int) -> int:
+    try:
+        return max(minimum, int(os.environ.get(name, default)))
+    except ValueError:
+        return default
+
+
+YT_DAILY_LIMIT = _yt_int("YT_DAILY_LIMIT", 5, 1)
+YT_MAX_BYTES = _yt_int("YT_MAX_MB", 250, 5) * 1024 * 1024
+YT_SCOPE = "https://www.googleapis.com/auth/youtube.upload"
+YT_STALE_MIN = 30  # 이 시간 넘게 'uploading'이면 서버가 재시작돼 끊긴 것으로 보고 다시 올릴 수 있게 한다
+_yt_usage = {"day": "", "n": 0}
+_yt_lock = threading.Lock()
+
+
+def _yt_today() -> str:
+    return time.strftime("%Y-%m-%d", time.gmtime())
+
+
+def _yt_missing() -> list:
+    return [k for k, v in (("YT_CLIENT_ID", YT_CLIENT_ID), ("YT_CLIENT_SECRET", YT_CLIENT_SECRET), ("YT_REFRESH_TOKEN", YT_REFRESH_TOKEN)) if not v]
+
+
+def _yt_base_url(request: Request) -> str:
+    base = os.environ.get("PUBLIC_BASE_URL", "").strip().rstrip("/")
+    if base:
+        return base
+    proto = (request.headers.get("x-forwarded-proto") or request.url.scheme).split(",")[0].strip()
+    host = (request.headers.get("x-forwarded-host") or request.headers.get("host") or request.url.netloc).split(",")[0].strip()
+    return f"{proto}://{host}"
+
+
+def _yt_google_error(r) -> str:
+    """Google API 오류 응답을 사람이 읽을 한국어 문장으로 바꾼다."""
+    try:
+        e = (r.json() or {}).get("error")
+    except Exception:
+        e = None
+    reason, msg = "", ""
+    if isinstance(e, dict):
+        msg = str(e.get("message") or "")
+        errs = e.get("errors") or []
+        reason = str((errs[0] or {}).get("reason") or "") if errs else str(e.get("status") or "")
+    elif isinstance(e, str):
+        reason = e
+    known = {
+        "quotaExceeded": "오늘 유튜브 API 할당량을 다 썼어요. 내일(태평양 시간 자정 기준) 다시 시도해 주세요.",
+        "uploadLimitExceeded": "이 채널의 일일 업로드 한도를 넘었어요. 잠시 뒤 다시 시도해 주세요.",
+        "youtubeSignupRequired": "이 구글 계정에 유튜브 채널이 없어요. 채널을 먼저 만들어 주세요.",
+        "forbidden": "이 계정으로는 업로드 권한이 없어요. 채널 연결을 다시 해 주세요.",
+        "authError": "유튜브 인증이 만료됐어요. 채널 연결을 다시 해 주세요.",
+        "unauthorized": "유튜브 인증이 만료됐어요. 채널 연결을 다시 해 주세요.",
+        "invalid_grant": "유튜브 연결(refresh token)이 만료되거나 취소됐어요. /api/youtube/auth 로 다시 연결하고 YT_REFRESH_TOKEN을 바꿔 주세요. "
+                         "(OAuth 동의 화면이 '테스트' 상태면 7일마다 만료돼요 — '프로덕션'으로 게시해 두세요.)",
+        "invalid_client": "YT_CLIENT_ID / YT_CLIENT_SECRET이 올바르지 않아요.",
+        "videoTooLong": "영상이 너무 길어요.",
+    }
+    if reason in known:
+        return known[reason]
+    return (f"유튜브 오류({reason or r.status_code}): {msg}"[:300]) if (reason or msg) else f"유튜브 오류({r.status_code})"
+
+
+def _yt_access_token() -> str:
+    miss = _yt_missing()
+    if miss:
+        raise HTTPException(500, "유튜브 연결 설정이 비어 있어요: " + ", ".join(miss))
+    try:
+        r = httpx.post(
+            "https://oauth2.googleapis.com/token",
+            data={"client_id": YT_CLIENT_ID, "client_secret": YT_CLIENT_SECRET, "refresh_token": YT_REFRESH_TOKEN, "grant_type": "refresh_token"},
+            timeout=30,
+        )
+    except httpx.HTTPError:
+        raise HTTPException(502, "구글 인증 서버에 연결하지 못했어요.")
+    if r.status_code != 200:
+        raise HTTPException(502, _yt_google_error(r))
+    return r.json()["access_token"]
+
+
+def _yt_clean(text: str, limit: int) -> str:
+    text = re.sub(r"[<>]", "", text or "").replace("\r", "").strip()
+    return text[:limit].strip()
+
+
+def _yt_meta(plan: dict) -> dict:
+    """기획서의 '업로드 정보' 단락(제목/설명/해시태그)을 읽어 유튜브 제목·설명·태그를 만든다. 없으면 기획서 제목·요약을 쓴다."""
+    title, desc, tags = plan.get("title") or "", plan.get("summary") or "", []
+    doc = plan.get("planning_doc") or ""
+    m = re.search(r"^#{1,6}[^\n]*업로드\s*정보[^\n]*$", doc, re.M)
+    if m:
+        rest = doc[m.end():]
+        nx = re.search(r"^#{1,6}\s", rest, re.M)
+        sec = rest[:nx.start()] if nx else rest
+        found = {}
+        for ln in sec.splitlines():
+            ln = ln.strip()
+            if not ln or re.fullmatch(r"[|:\-\s]+", ln):
+                continue
+            if ln.startswith("|"):
+                cells = [c.strip() for c in ln.strip("|").split("|")]
+                if len(cells) >= 2:
+                    key, val = cells[0], " ".join(cells[1:])
+                else:
+                    continue
+            else:
+                mm = re.match(r"^[\s>*\-•]*\**\s*([^:：*]{1,12}?)\s*\**\s*[:：]\s*(.+)$", ln)
+                if not mm:
+                    continue
+                key, val = mm.group(1), mm.group(2)
+            key = re.sub(r"[\s*]", "", key)
+            val = val.replace("**", "").strip()
+            if key.startswith("제목") and val:
+                found["title"] = val
+            elif key.startswith("설명") and val:
+                found["desc"] = val
+            elif ("해시태그" in key or key.startswith("태그")) and val:
+                found["tags"] = val
+        title = found.get("title") or title
+        desc = found.get("desc") or desc
+        tags = re.findall(r"#([^\s#,]+)", found.get("tags", ""))
+        if not tags and found.get("tags"):
+            tags = [t.strip() for t in re.split(r"[,，]", found["tags"]) if t.strip()]
+    tags = [t.lstrip("#") for t in tags][:15]
+    if "shorts" not in " ".join(tags).lower():
+        tags.append("Shorts")
+    title = _yt_clean(title, 95) or "쇼츠"
+    tagline = " ".join("#" + t for t in tags if " " not in t)
+    body = _yt_clean(desc, 4000)
+    return {"title": title, "description": (body + "\n\n" + tagline).strip(), "tags": [t for t in tags if t.lower() != "shorts"][:15]}
+
+
+def _yt_resume_pos(url: str, size: int, token: str) -> int:
+    """끊긴 업로드가 어디까지 받아졌는지 묻는다(다음에 보낼 시작 위치)."""
+    r = httpx.put(url, headers={"Authorization": f"Bearer {token}", "Content-Length": "0", "Content-Range": f"bytes */{size}"}, timeout=60)
+    if r.status_code in (200, 201):
+        return size
+    rng = r.headers.get("Range", "")
+    mm = re.search(r"bytes=0-(\d+)", rng)
+    return int(mm.group(1)) + 1 if mm else 0
+
+
+def _yt_upload_file(path: Path, mime: str, meta: dict, privacy: str) -> str:
+    token = _yt_access_token()
+    size = path.stat().st_size
+    snippet = {"title": meta["title"], "description": meta["description"], "categoryId": YT_CATEGORY_ID, "defaultLanguage": "ko", "defaultAudioLanguage": "ko"}
+    if meta["tags"]:
+        snippet["tags"] = meta["tags"]
+    body = {"snippet": snippet, "status": {"privacyStatus": privacy, "selfDeclaredMadeForKids": False}}
+    try:
+        init = httpx.post(
+            "https://www.googleapis.com/upload/youtube/v3/videos",
+            params={"uploadType": "resumable", "part": "snippet,status"},
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json; charset=UTF-8",
+                     "X-Upload-Content-Length": str(size), "X-Upload-Content-Type": mime},
+            json=body, timeout=30,
+        )
+    except httpx.HTTPError:
+        raise HTTPException(502, "유튜브에 연결하지 못했어요.")
+    if init.status_code != 200 or not init.headers.get("Location"):
+        raise HTTPException(502, _yt_google_error(init))
+    url = init.headers["Location"]
+    CHUNK = 8 * 1024 * 1024  # 256KB의 배수여야 한다
+    pos, fails = 0, 0
+    with path.open("rb") as f:
+        while pos < size:
+            f.seek(pos)
+            data = f.read(CHUNK)
+            end = pos + len(data) - 1
+            hdr = {"Content-Length": str(len(data)), "Content-Range": f"bytes {pos}-{end}/{size}", "Content-Type": mime}
+            try:
+                r = httpx.put(url, content=data, headers=hdr, timeout=180)
+            except httpx.HTTPError:
+                r = None
+            if r is not None and r.status_code in (200, 201):
+                return r.json()["id"]
+            if r is not None and r.status_code == 308:  # 이 조각은 받았고 다음 조각을 기다린다
+                pos, fails = end + 1, 0
+                continue
+            if r is not None and r.status_code < 500:
+                raise HTTPException(502, _yt_google_error(r))
+            # 네트워크 오류 또는 5xx: 잠시 쉬고, 어디까지 받아졌는지 물어 거기서부터 다시 보낸다
+            fails += 1
+            if fails > 5:
+                raise HTTPException(502, "유튜브로 영상을 보내다 연결이 계속 끊겼어요. 잠시 뒤 다시 시도해 주세요.")
+            time.sleep(2 * fails)
+            try:
+                pos = _yt_resume_pos(url, size, token)
+            except httpx.HTTPError:
+                pass
+            if pos >= size:
+                raise HTTPException(502, "업로드는 끝났지만 결과를 확인하지 못했어요. 유튜브 스튜디오에서 올라갔는지 확인해 주세요.")
+    raise HTTPException(502, "유튜브가 업로드 완료 응답을 주지 않았어요. 유튜브 스튜디오에서 확인해 주세요.")
+
+
+def _yt_save(plan_id: int, status: str, vid: Optional[str] = None, error: Optional[str] = None):
+    conn = db_conn()
+    try:
+        with conn, conn.cursor() as cur:
+            cur.execute(
+                """UPDATE shorts_plans SET youtube_status = %s, youtube_error = %s,
+                          youtube_id = COALESCE(%s, youtube_id), updated_at = now()
+                   WHERE id = %s""",
+                (status, error, vid, plan_id),
+            )
+    finally:
+        conn.close()
+
+
+def _run_youtube_upload(plan_id: int, path: Path, mime: str, privacy: str):
+    try:
+        plan = _load_plan_raw(plan_id)
+        vid = _yt_upload_file(path, mime, _yt_meta(plan), privacy)
+        _yt_save(plan_id, "done", vid=vid)
+    except Exception as e:  # noqa: BLE001 - 어떤 실패든 화면에 이유를 보여 준다
+        _blog(f"유튜브 업로드 실패 plan={plan_id}: {_err_text(e)}")
+        try:
+            _yt_save(plan_id, "failed", error=_err_text(e))
+        except Exception:
+            pass
+    finally:
+        shutil.rmtree(path.parent, ignore_errors=True)
+
+
+@app.get("/api/youtube/status")
+def youtube_status():
+    miss = _yt_missing()
+    with _yt_lock:
+        used = _yt_usage["n"] if _yt_usage["day"] == _yt_today() else 0
+    return {
+        "configured": not miss,
+        "missing": miss,
+        "can_connect": bool(YT_CLIENT_ID and YT_CLIENT_SECRET),
+        "default_privacy": YT_DEFAULT_PRIVACY,
+        "daily_limit": YT_DAILY_LIMIT,
+        "daily_left": max(0, YT_DAILY_LIMIT - used),
+    }
+
+
+@app.post("/api/plans/{plan_id}/youtube")
+async def upload_plan_youtube(
+    request: Request,
+    plan_id: int = PathParam(..., ge=1, le=2147483647),
+    privacy: str = Query("", pattern=r"^(private|unlisted|public)?$"),
+    force: bool = Query(False, description="true면 이미 올린 영상이 있어도 한 번 더 올린다"),
+):
+    """편집기에서 내보낸 영상 파일(본문 그대로)을 받아 내 유튜브 채널에 올린다. 업로드는 백그라운드로 진행되고 바로 응답한다."""
+    miss = _yt_missing()
+    if miss:
+        raise HTTPException(500, "유튜브 연결이 아직 안 됐어요. 설정이 비어 있어요: " + ", ".join(miss))
+    privacy = privacy or YT_DEFAULT_PRIVACY
+    mime = (request.headers.get("content-type") or "").split(";")[0].strip().lower()
+    if mime not in ("video/mp4", "video/webm"):
+        raise HTTPException(400, "mp4 또는 webm 영상만 올릴 수 있어요.")
+    try:
+        if int(request.headers.get("content-length") or 0) > YT_MAX_BYTES:
+            raise HTTPException(413, f"영상은 {YT_MAX_BYTES // (1024 * 1024)}MB 이하만 올릴 수 있어요.")
+    except ValueError:
+        pass
+    # 하루 상한(비용·할당량 보호). 실패하면 아래에서 되돌린다.
+    with _yt_lock:
+        if _yt_usage["day"] != _yt_today():
+            _yt_usage.update(day=_yt_today(), n=0)
+        if _yt_usage["n"] >= YT_DAILY_LIMIT:
+            raise HTTPException(429, f"오늘 유튜브 업로드 상한({YT_DAILY_LIMIT}건)에 도달했어요. 내일 다시 시도해 주세요.")
+        _yt_usage["n"] += 1
+
+    def _refund():
+        with _yt_lock:
+            if _yt_usage["day"] == _yt_today() and _yt_usage["n"] > 0:
+                _yt_usage["n"] -= 1
+
+    # 이 기획서의 업로드 자리를 먼저 잡는다(중복 클릭·중복 업로드 방지)
+    conn = db_conn()
+    try:
+        with conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                """UPDATE shorts_plans SET youtube_status = 'uploading', youtube_error = NULL, youtube_privacy = %s,
+                          youtube_at = now(), updated_at = now()
+                   WHERE id = %s AND status IN ('approved', 'done', 'failed')
+                     AND (youtube_status IS DISTINCT FROM 'uploading' OR youtube_at < now() - make_interval(mins => %s))
+                     AND (youtube_id IS NULL OR %s)
+                   RETURNING id""",
+                (privacy, plan_id, YT_STALE_MIN, force),
+            )
+            ok = cur.fetchone()
+            cur_row = None
+            if not ok:
+                cur.execute("SELECT status, youtube_status, youtube_id FROM shorts_plans WHERE id = %s AND status <> 'deleted'", (plan_id,))
+                cur_row = cur.fetchone()
+    except Exception:
+        _refund()
+        raise
+    finally:
+        conn.close()
+    if not ok:
+        _refund()
+        if not cur_row:
+            raise HTTPException(404, "기획서를 찾을 수 없어요. 삭제됐을 수 있어요.")
+        if cur_row["youtube_status"] == "uploading":
+            raise HTTPException(409, "이미 유튜브에 올리는 중이에요.")
+        if cur_row["youtube_id"] and not force:
+            raise HTTPException(409, "이미 유튜브에 올린 영상이에요.")
+        raise HTTPException(409, "승인 전이거나 생성 중인 기획서는 유튜브에 올릴 수 없어요.")
+
+    # 본문을 임시 파일로 받는다(메모리에 통째로 올리지 않는다). 임시 폴더는 /generated 밖이라 외부에 공개되지 않는다.
+    tmpdir = Path(tempfile.mkdtemp(prefix="ytup_"))
+    path = tmpdir / "video"
+    try:
+        total = 0
+        with path.open("wb") as f:
+            async for chunk in request.stream():
+                total += len(chunk)
+                if total > YT_MAX_BYTES:
+                    raise HTTPException(413, f"영상은 {YT_MAX_BYTES // (1024 * 1024)}MB 이하만 올릴 수 있어요.")
+                f.write(chunk)
+        head = path.read_bytes()[:12] if total else b""
+        is_mp4 = head[4:8] == b"ftyp"
+        is_webm = head[:4] == b"\x1a\x45\xdf\xa3"
+        if not (is_mp4 or is_webm):
+            raise HTTPException(400, "영상 파일이 아니거나 비어 있어요. 영상을 다시 내보내 주세요.")
+        mime = "video/mp4" if is_mp4 else "video/webm"
+    except BaseException as e:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+        _refund()
+        try:
+            _yt_save(plan_id, "failed", error=_err_text(e) if isinstance(e, HTTPException) else "영상을 서버로 받지 못했어요.")
+        except Exception:
+            pass
+        raise
+    threading.Thread(target=_run_youtube_upload, args=(plan_id, path, mime, privacy), daemon=True).start()
+    return get_plan(plan_id)
+
+
+# ---- 채널 연결(한 번만) ----
+# 1) 구글 클라우드에서 YouTube Data API v3를 켜고 OAuth 클라이언트(웹)를 만든 뒤, 승인된 리디렉션 URI에
+#    https://내앱주소/api/youtube/callback 을 넣는다.  2) 이 앱 주소 뒤에 /api/youtube/auth 로 들어가 올릴 채널의 계정으로 동의한다.
+# 3) 화면에 나온 refresh token을 Railway의 YT_REFRESH_TOKEN 에 넣고 재배포한다. (토큰은 서버에 저장하지 않고 화면에만 보여 준다)
+def _yt_state_sign(ts: str) -> str:
+    return hmac.new(YT_CLIENT_SECRET.encode(), f"ytauth:{ts}".encode(), "sha256").hexdigest()[:32]
+
+
+@app.get("/api/youtube/auth")
+def youtube_auth(request: Request):
+    if not (YT_CLIENT_ID and YT_CLIENT_SECRET):
+        raise HTTPException(500, "YT_CLIENT_ID, YT_CLIENT_SECRET 환경변수를 먼저 설정해 주세요.")
+    ts = str(int(time.time()))
+    q = urllib.parse.urlencode({
+        "client_id": YT_CLIENT_ID, "redirect_uri": _yt_base_url(request) + "/api/youtube/callback", "response_type": "code",
+        "scope": YT_SCOPE, "access_type": "offline", "prompt": "consent", "state": f"{ts}.{_yt_state_sign(ts)}",
+    })
+    return RedirectResponse("https://accounts.google.com/o/oauth2/v2/auth?" + q)
+
+
+@app.get("/api/youtube/callback", response_class=HTMLResponse)
+def youtube_callback(request: Request, code: str = Query(""), state: str = Query(""), error: str = Query("")):
+    def page(title: str, body: str) -> HTMLResponse:
+        return HTMLResponse(f"<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
+                            f"<body style='font-family:sans-serif;max-width:640px;margin:40px auto;padding:0 16px;line-height:1.6'>"
+                            f"<h2>{_html.escape(title)}</h2>{body}</body>")
+    if error:
+        return page("연결이 취소됐어요", f"<p>{_html.escape(error)}</p>")
+    ts, _, sig = state.partition(".")
+    if not (YT_CLIENT_SECRET and ts.isdigit() and hmac.compare_digest(sig, _yt_state_sign(ts)) and time.time() - int(ts) < 600):
+        return page("요청이 올바르지 않아요", "<p>연결 주소를 다시 열어 처음부터 진행해 주세요.</p>")
+    try:
+        r = httpx.post("https://oauth2.googleapis.com/token", data={
+            "code": code, "client_id": YT_CLIENT_ID, "client_secret": YT_CLIENT_SECRET,
+            "redirect_uri": _yt_base_url(request) + "/api/youtube/callback", "grant_type": "authorization_code"}, timeout=30)
+    except httpx.HTTPError:
+        return page("구글에 연결하지 못했어요", "<p>잠시 뒤 다시 시도해 주세요.</p>")
+    if r.status_code != 200:
+        return page("토큰을 받지 못했어요", f"<p>{_html.escape(_yt_google_error(r))}</p>")
+    rt = r.json().get("refresh_token")
+    if not rt:
+        return page("refresh token이 없어요", "<p>이미 연결된 적이 있어서 구글이 새 토큰을 주지 않았어요. "
+                    "<a href='https://myaccount.google.com/permissions' target=_blank>구글 계정 권한</a>에서 이 앱을 제거한 뒤 다시 연결해 주세요.</p>")
+    return page("연결됐어요", "<p>아래 값을 Railway 환경변수 <b>YT_REFRESH_TOKEN</b>에 넣고 재배포하세요. 다른 사람에게 보여 주지 마세요.</p>"
+                f"<textarea readonly rows=4 style='width:100%;font-family:monospace' onclick='this.select()'>{_html.escape(rt)}</textarea>")
 
 
 # ---------------- 인기스타 등록 ----------------

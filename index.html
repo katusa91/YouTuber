@@ -165,6 +165,10 @@ form.ask input{flex:1;min-width:0;height:36px;border:1px solid var(--line);borde
 .ed-top{display:flex;align-items:center;gap:12px;margin:8px 0 10px;flex-wrap:wrap}
 .ed-top .ed-title{flex:1;min-width:120px;font-weight:700;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ed-len{color:var(--muted);font-size:13px}
+.ed-yt{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+.ed-yt select{font:inherit;padding:4px 6px;border-radius:6px;border:1px solid var(--line,#ccc);background:inherit;color:inherit}
+.ed-yt label{display:flex;align-items:center;gap:4px;cursor:pointer}
+.ed-yt .yt-err{color:#d93025}
 .ed-len.over{color:#d93025;font-weight:700}
 .ed{display:grid;grid-template-columns:320px minmax(0,1fr) 300px;grid-template-rows:minmax(0,1fr) 272px;gap:12px;height:calc(100vh - 150px);min-height:660px}
 .ed-panel{border:1px solid var(--line);border-radius:12px;background:var(--bg);display:flex;flex-direction:column;min-height:0;min-width:0;overflow:hidden}
@@ -2348,6 +2352,70 @@ async function genLoad(auto) {
   if (ED === E) renderAll();
 }
 
+/* ---------- 유튜브 업로드 ----------
+   내보낸 영상을 서버로 보내면 서버가 내 채널에 올려요(토큰은 서버에만 있어요). 결과는 기획서(youtube_status/youtube_id)에 저장돼요. */
+const YT_PRIV = { private: "비공개", unlisted: "일부 공개", public: "공개" };
+let ytCfgP = null;
+function ytCfg() { return ytCfgP || (ytCfgP = getJSON("/api/youtube/status").catch(() => ({ configured: false, missing: ["?"], can_connect: false, error: true }))); }
+function ytAutoOn() { try { return localStorage.getItem("yt_auto") === "1"; } catch (_) { return false; } }
+function ytPrivacy(def) { let v = ""; try { v = localStorage.getItem("yt_priv") || ""; } catch (_) {} return YT_PRIV[v] ? v : (def || "private"); }
+async function ytRender(E) {
+  const box = $("#ed-yt"); if (!box || ED !== E) return;
+  const c = await ytCfg(); if (ED !== E || !$("#ed-yt")) return;
+  const p = E.plan, st = p.youtube_status, busy = E.ytBusy || st === "uploading";
+  if (!c.configured) {
+    box.innerHTML = c.error ? "" : `<span title="필요한 설정: ${esc((c.missing || []).join(", "))}">유튜브 연결 전${c.can_connect ? ` · <a href="/api/youtube/auth" target="_blank" rel="noopener">채널 연결하기</a>` : " · 서버 환경변수 설정 필요"}</span>`;
+    return;
+  }
+  const pv = ytPrivacy(c.default_privacy);
+  let stat = "";
+  if (busy) stat = `<span>⏫ ${E.ytBusy && st !== "uploading" ? "서버로 보내는 중..." : "유튜브에 올리는 중..."}</span>`;
+  else if (st === "done" && p.youtube_id) stat = `<a href="https://www.youtube.com/shorts/${esc(p.youtube_id)}" target="_blank" rel="noopener">✅ 유튜브에 올림 (${YT_PRIV[p.youtube_privacy] || ""})</a>`;
+  else if (st === "failed") stat = `<span class="yt-err" title="${esc(p.youtube_error || "")}">⚠ 업로드 실패: ${esc((p.youtube_error || "").slice(0, 80))}</span>`;
+  box.innerHTML = `${stat}<label title="영상 내보내기가 끝나면 바로 유튜브에 올려요"><input type="checkbox" id="ed-ytauto" ${ytAutoOn() ? "checked" : ""}>자동 업로드</label>
+    <select id="ed-ytpriv" aria-label="공개 범위">${Object.entries(YT_PRIV).map(([k, v]) => `<option value="${k}" ${k === pv ? "selected" : ""}>${v}</option>`).join("")}</select>
+    <button class="btn" data-act="yt-upload" ${busy || !E.lastExport ? "disabled" : ""} title="${E.lastExport ? "방금 내보낸 영상을 유튜브에 올려요" : "먼저 '영상 내보내기'를 해 주세요"}">유튜브에 올리기</button>`;
+}
+async function ytUpload(E) {
+  E = E || ED; if (!E) return;
+  const x = E.lastExport;
+  if (!x) { toast("먼저 '영상 내보내기'를 해 주세요. 내보낸 영상을 올려요."); return; }
+  if (E.ytBusy || E.plan.youtube_status === "uploading") { toast("이미 올리는 중이에요."); return; }
+  const again = !!E.plan.youtube_id;
+  if (again && !confirm("이 기획서는 이미 유튜브에 올렸어요. 한 번 더 올리면 같은 영상이 중복으로 올라가요. 올릴까요?")) return;
+  const c = await ytCfg(), pv = ytPrivacy(c.default_privacy);
+  if (pv === "public" && !confirm("'공개'로 바로 올려요. 계속할까요?")) return;
+  E.ytBusy = true; ytRender(E);
+  try {
+    const r = await fetch(`/api/plans/${E.plan.id}/youtube?privacy=${pv}${again ? "&force=true" : ""}`, { method: "POST", headers: { "Content-Type": x.type.split(";")[0] }, body: x.blob });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(typeof d.detail === "string" && d.detail ? d.detail : "유튜브 업로드를 시작하지 못했어요.");
+    E.plan = { ...E.plan, ...d }; if (EDS[E.plan.id]) EDS[E.plan.id].plan = E.plan;
+    toast("영상을 서버로 보냈어요. 유튜브에 올리는 중이에요...");
+    ytPoll(E);
+  } catch (e) { E.ytBusy = false; toast(e.message || "유튜브 업로드에 실패했어요."); try { E.plan = { ...E.plan, ...(await getJSON("/api/plans/" + E.plan.id)) }; } catch (_) {} }
+  ytRender(E);
+}
+function ytPoll(E) {
+  if (E.ytPolling) return; E.ytPolling = true;
+  const t0 = Date.now();
+  const tick = async () => {
+    try {
+      const d = await getJSON("/api/plans/" + E.plan.id);
+      E.plan = { ...E.plan, ...d }; if (EDS[E.plan.id]) EDS[E.plan.id].plan = E.plan;
+      if (d.youtube_status !== "uploading" || Date.now() - t0 > 30 * 60 * 1000) {
+        E.ytPolling = false; E.ytBusy = false; ytRender(E);
+        if (d.youtube_status === "done") toast(`유튜브에 올렸어요! (${YT_PRIV[d.youtube_privacy] || ""})`);
+        else if (d.youtube_status === "failed") toast("유튜브 업로드에 실패했어요: " + (d.youtube_error || ""));
+        return;
+      }
+      ytRender(E);
+    } catch (_) {}
+    setTimeout(tick, 3000);
+  };
+  setTimeout(tick, 2000);
+}
+
 /* ---------- 내보내기 ---------- */
 // 내보내기가 끝난 뒤에야 기획서를 '생성 완료'로 바꾼다(그 전에는 '생성 중')
 async function markExported(E, msg) {
@@ -2384,7 +2452,9 @@ async function exportVideo() {
       const blob = new Blob(chunks, { type }), a = document.createElement("a");
       a.href = URL.createObjectURL(blob); a.download = (ED.plan.title.replace(/[\\/:*?"<>|]+/g, " ").trim().slice(0, 50) || "shorts") + "." + ext;
       document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000);
-      markExported(E, ext === "webm" ? "내보내기 완료! (webm 파일이에요. 업로드 전 mp4 변환이 필요할 수 있어요)" : "내보내기 완료!");
+      E.lastExport = { blob, type, ext };   // 유튜브 업로드에 쓴다(새로고침하면 사라져요)
+      ytRender(E);
+      markExported(E, ext === "webm" ? "내보내기 완료! (webm 파일이에요)" : "내보내기 완료!").then(() => { if (ytAutoOn()) ytUpload(E); });
     } else toast("내보내기를 취소했어요.");
   } catch (err) { toast("내보내기에 실패했어요: " + (err && err.message || err)); }
   ED.exporting = false; ED.onEnd = null; const o = $("#ed-ov"); if (o) o.remove(); ED.t = 0; syncMedia(); draw(); updateTime();
@@ -2411,7 +2481,7 @@ async function renderEditor(id) {
     document.title = p.title + " · 쇼츠 생성";
     if (innerWidth < 1600) document.body.classList.add("side-off");
     view.innerHTML = `<div class="ed-wrap">
-      <div class="ed-top"><a class="btn" href="#/shorts">← 목록</a><div class="ed-title" title="${esc(p.title)}">${esc(p.title)}</div><span class="ed-len" id="ed-len"></span><button class="btn pri" data-act="export">영상 내보내기</button></div>
+      <div class="ed-top"><a class="btn" href="#/shorts">← 목록</a><div class="ed-title" title="${esc(p.title)}">${esc(p.title)}</div><span class="ed-len" id="ed-len"></span><span class="ed-yt" id="ed-yt"></span><button class="btn pri" data-act="export">영상 내보내기</button></div>
       <div class="ed">
         <section class="ed-panel ed-left" id="ed-left"></section>
         <section class="ed-panel ed-mid"><div class="ed-sw"><div class="ed-stage"><canvas id="ed-cv" width="720" height="1280"></canvas><div class="ed-empty" id="ed-empty">왼쪽 "AI 생성" 탭에서 이미지/영상을 골라 기획서대로 만들거나,<br>"미디어" 탭에서 내 사진·동영상을 가져와 보세요</div></div>
@@ -2428,7 +2498,8 @@ async function renderEditor(id) {
           <span class="ed-sub">확대/축소</span><input type="range" id="ed-zoom" min="20" max="200" value="${ED.zoom}" aria-label="타임라인 확대/축소"></div>
           <div class="ed-tl-sc" id="ed-tl-sc"><div class="ed-tl-in" id="ed-tl-in"></div></div></section>
       </div></div>`;
-    bindEditor(); renderAll();
+    bindEditor(); renderAll(); ytRender(ED);
+    if (p.youtube_status === "uploading") ytPoll(ED);
     if (genBusy(p)) genPoll();
     else if (p.status === "done" && !ED.clips.length && !ED.genKey) genLoad(true);   // 생성된 영상이 바로 보이게
     if (document.fonts) document.fonts.load('700 40px "Noto Sans KR"').then(() => draw());
@@ -2447,6 +2518,8 @@ function bindEditor() {
     else if (e.target.id === "ed-afile") { addFiles([...e.target.files], "audio"); e.target.value = ""; }
     else if (e.target.id === "ed-thumbfile") { const f = e.target.files[0]; e.target.value = ""; thumbUpload(f); }
     else if (e.target.id === "ed-thumbtitle") { ED.thumbTitle = e.target.checked; thumbPaint(); }
+    else if (e.target.id === "ed-ytauto") { try { localStorage.setItem("yt_auto", e.target.checked ? "1" : "0"); } catch (_) {} }
+    else if (e.target.id === "ed-ytpriv") { try { localStorage.setItem("yt_priv", e.target.value); } catch (_) {} }
   });
   root.addEventListener("dragstart", e => { const m = e.target.closest && e.target.closest(".ed-m"); if (m) { e.dataTransfer.setData("text/ed-mid", m.dataset.mid); e.dataTransfer.effectAllowed = "copy"; } });
   root.addEventListener("dragover", e => {
@@ -2488,6 +2561,7 @@ function edClick(e) {
   const o = selObj();
   switch (b.dataset.act) {
     case "export": exportVideo(); break;
+    case "yt-upload": ytUpload(ED); break;
     case "play": ED.playing ? pause() : play(); break;
     case "first": seek(0); break;
     case "undo": undo(); break;
